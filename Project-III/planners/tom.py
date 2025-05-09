@@ -54,9 +54,9 @@ class State:
 	def game_result(self):
 		# 3 points awarded to winning agent!
 		if(np.array_equal(self.current, self.pursuer)):
-			return 1
-		elif (np.array_equal(self.current, self.pursed)):
 			return -1
+		elif (np.array_equal(self.current, self.pursed)):
+			return 1
 		else:
 			return 0
 			
@@ -137,7 +137,7 @@ class Node:
 			if not possible_moves:
 				break
 
-			action = self.rollout_policy(possible_moves)
+			action = self.rollout_policy(possible_moves, crnt_rollout_state)
 			crnt_rollout_state = crnt_rollout_state.move(action)
 			depth += 1
 
@@ -145,7 +145,20 @@ class Node:
 		return crnt_rollout_state.game_result()
 	
 	#Randomly select a move for random simulation
-	def rollout_policy(self, possible_moves):
+	def rollout_policy(self, possible_moves, state):
+
+		#use heuristic to get to choose one in the direction of purserer
+		# scores = []
+		# for action in possible_moves:
+		# 	new_pos = state.current + action
+
+		# 	# here we can do some heurstics (distance from pursuer and pursued and choose the best
+		# 	# action from that)
+		# 	dst_from_pursued = round(np.sqrt((state.pursued[0] - new_pos[0]), 2)
+		# 	 + pow((state.pursued[1] - new_pos[1], 2)), 3)
+		# 	scores.append(dst_from_pursued)
+
+
 		return possible_moves[np.random.randint(len(possible_moves))]
 	
 	#update the values accordingly
