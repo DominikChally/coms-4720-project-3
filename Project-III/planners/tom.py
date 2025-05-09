@@ -18,14 +18,10 @@ directions = np.array([[0,0], [-1, 0], [1, 0], [0, -1], [0, 1],
 GRID = None
 
 
-def check_winning(state):
-	
-	return
-
 class State:
 	def __init__(self, current, pursued, pursuer):
 		self.current = current
-		self.pursed = pursued
+		self.pursued = pursued
 		self.pursuer = pursuer
 		self.steps = 0
 		#self.max_steps = max_steps
@@ -35,12 +31,12 @@ class State:
 	def move(self, action):
 		new_current = [self.current[0] + action[0], self.current[1] + action[1]]
 		new_state = State(new_current,
-					 self.pursed, self.pursuer)
+					 self.pursued, self.pursuer)
 		return new_state
 
 	def is_game_over(self):
 
-		if np.array_equal(self.current, self.pursed):
+		if np.array_equal(self.current, self.pursued):
 			return True
 		
 		if np.array_equal(self.current, self.pursuer):
@@ -54,11 +50,12 @@ class State:
 	def game_result(self):
 		# 3 points awarded to winning agent!
 		if(np.array_equal(self.current, self.pursuer)):
-			return -1
-		elif (np.array_equal(self.current, self.pursed)):
-			return 1
+			return -1.0
+		elif (np.array_equal(self.current, self.pursued)):
+			return 1.0
 		else:
-			return 0
+			##draw
+			return 0.5
 			
 	def get_legal_actions(self):
 		legal_moves = []
@@ -95,7 +92,7 @@ class Node:
 
 		#self.done = done
             
-	def getUCBscore(self, c=0.1):
+	def getUCBscore(self, c=1.41):
 		if self.N == 0:
 			return float('inf')
  		
@@ -104,9 +101,9 @@ class Node:
         
 		return exploitation + exploration
 	
-	def best_child(self, c_val):
+	def best_child(self, c_val=1.41):
 		res = max(self.children.items(),
-					key=lambda item: self.children[item].getUCBscore(c_val))[1]
+					key=lambda item: item[1].getUCBscore(c_val))[1]
 
 		return res
 	
@@ -130,13 +127,14 @@ class Node:
 	def rollout(self):
 		crnt_rollout_state = self.state
 		depth = 0
-		max_rollout_depth = 10 		#PROBLEMS HERE, DOESNT ACTUALLY GET TO A TERMINATING STATE
+		max_rollout_depth = 100 		#PROBLEMS HERE, DOESNT ACTUALLY GET TO A TERMINATING STATE
 		#loops through all moves until at terminal node
 		while not crnt_rollout_state.is_game_over() and depth < max_rollout_depth: # this can either be is_game_over or is_terminal_node
 			possible_moves = crnt_rollout_state.get_legal_actions()
 			if not possible_moves:
+				print("no possible moves")
 				break
-
+			
 			action = self.rollout_policy(possible_moves, crnt_rollout_state)
 			crnt_rollout_state = crnt_rollout_state.move(action)
 			depth += 1
@@ -148,18 +146,19 @@ class Node:
 	def rollout_policy(self, possible_moves, state):
 
 		#use heuristic to get to choose one in the direction of purserer
-		# scores = []
-		# for action in possible_moves:
-		# 	new_pos = state.current + action
+		scores = []
+		for action in possible_moves:
+			new_pos = state.current + action
 
-		# 	# here we can do some heurstics (distance from pursuer and pursued and choose the best
-		# 	# action from that)
-		# 	dst_from_pursued = round(np.sqrt((state.pursued[0] - new_pos[0]), 2)
-		# 	 + pow((state.pursued[1] - new_pos[1], 2)), 3)
-		# 	scores.append(dst_from_pursued)
-
-
-		return possible_moves[np.random.randint(len(possible_moves))]
+			# here we can do some heurstics (distance from pursuer and pursued and choose the best
+			# action from that)
+			# dst_from_pursued = round(np.sqrt((state.pursued[0] - new_pos[0]), 2)
+			#  + pow((state.pursued[1] - new_pos[1], 2)), 3)
+			# scores.append(dst_from_pursued)
+			dst_from_pursued = np.linalg.norm(state.pursued - new_pos)
+			scores.append(dst_from_pursued)
+		return possible_moves[np.argmin(scores)]
+		#return possible_moves[np.random.randint(len(possible_moves))]
 	
 	#update the values accordingly
 	#NEED TO UNDERSTAND RESULT HERE
@@ -172,24 +171,26 @@ class Node:
 		if self.parent:
 			self.parent.backpropogate(result)
 
-def mcts_search(state, simulations = 100):
+def mcts_search(state, simulations = 200):
 
 	root = Node(state)
 	for _ in range(simulations):
 		node = root
 
-		while not node.is_fully_expanded() and node.is_fully_expanded():
+		#selection
+		while not node.is_terminal_node() and node.is_fully_expanded():
 			node = node.best_child()
-			if node is None:
-				break
+			# if node is None:
+			# 	break
 
-		#figure this out its not check_winner, its something else
-		if not node.is_terminal_node() and node.is_fully_expanded():
+		#expansion
+		if not node.is_terminal_node() and not node.is_fully_expanded():
 			node = node.expand()
 
 		#simulation
 		result = node.rollout()
 
+		#backpropogation
 		node.backpropogate(result)	
 
 	if not root.children:
@@ -200,7 +201,7 @@ def mcts_search(state, simulations = 100):
 
 	# # #change this to highest reward
 	# best_action = None
-	# best_reward = float('-inf')
+	# best_visits = float('-inf')
 	# for action, child in root.children.items():
 	# 	if child.N > best_visits:
 	# 		best_visits = child.N
@@ -208,7 +209,7 @@ def mcts_search(state, simulations = 100):
 
 	# Debug information (optional)
 	# for action, child in root.children.items():
-	#     print(f"Action {action}: visits={child.N}, value={child.T/child.N if child.N else 0}")
+	# 	print(f"Action {action}: visits={child.N}, value={child.T/child.N if child.N else 0}")
     
 	return np.array(best_action) 
 
