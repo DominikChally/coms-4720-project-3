@@ -15,48 +15,95 @@ Scoring for each task is as follows:
 1 point each: Awarded to all agents if the task results in a tie (e.g., multiple captures in the same step or a timed-out draw).'''
 directions = np.array([[0,0], [-1, 0], [1, 0], [0, -1], [0, 1],
                   	  		   [-1, -1], [-1, 1], [1, -1], [1, 1]]) 
+GRID = None
 
-def get_legal_actions(state):
 
+def check_winning(state):
+	
 	return
 
-
 class State:
-	def __init__(self, grid, current, pursued, pursuer):
-		self.grid = grid
+	def __init__(self, current, pursued, pursuer):
 		self.current = current
 		self.pursed = pursued
 		self.pursuer = pursuer
+		self.steps = 0
+		#self.max_steps = max_steps
+	
 
+	# returns the next move of given state, action
+	def move(self, action):
+		new_current = [self.current[0] + action[0], self.current[1] + action[1]]
+		new_state = State(new_current,
+					 self.pursed, self.pursuer)
+		return new_state
+
+	def is_game_over(self):
+
+		if np.array_equal(self.current, self.pursed):
+			return True
+		
+		if np.array_equal(self.current, self.pursuer):
+			return True
+		
+		# if self.steps >= self.max_steps:
+		# 	return True
+		
+		return False
+	
+	def game_result(self):
+		# 3 points awarded to winning agent!
+		if(np.array_equal(self.current, self.pursuer)):
+			return 1
+		elif (np.array_equal(self.current, self.pursed)):
+			return -1
+		else:
+			return 0
+			
+	def get_legal_actions(self):
+		legal_moves = []
+		rows, cols = GRID.shape
+        
+		for direction in directions:
+			new_pos = self.current + direction
+            
+			# Check if the move is within bounds and not into an obstacle
+			if (0 <= new_pos[0] < rows and 
+				0 <= new_pos[1] < cols and 
+				GRID[new_pos[0], new_pos[1]] == 0):
+				legal_moves.append(direction)
+
+		return legal_moves
 
 class Node:
-	def __init__(self, state, done, parent, observation, action_index):
+	def __init__(self, state, parent = None, parent_action = None):
 		
 		#child nodes
 		self.children = {}
-            
+		self.parent = parent
+
         #total rewards from MCTS exploration
 		self.T = 0
             
 		#visit count
 		self.N = 0
         #environment
+								
 		self.state = state
-		self.observation = observation
-		self.done = done
-		self.parent = parent
-		self.action_index = action_index
+		self.parent_action = parent_action
+		self.untried_actions = state.get_legal_actions()
+
+		#self.done = done
             
-	def getUCBscore(self, c=2):
+	def getUCBscore(self, c=0.1):
 		if self.N == 0:
 			return float('inf')
-
-		top_node = self
-		if top_node.pare:
-			top_node = top_node.parent
-		
-		return (self.T / self.N) + c * math.sqrt(math.log(top_node.N) / self.N)
-      
+ 		
+		exploration = c * math.sqrt(math.log(self.parent.N) / self.N) if self.parent else 0
+		exploitation = self.T / self.N
+        
+		return exploitation + exploration
+	
 	def best_child(self, c_val):
 		res = max(self.children.items(),
 					key=lambda item: self.children[item].getUCBscore(c_val))[1]
@@ -64,26 +111,95 @@ class Node:
 		return res
 	
 	def is_fully_expanded(self):
-		return len(self.children) == len(get_legal_actions(self.state))
+		return len(self.untried_actions) == 0
+
+	def is_terminal_node(self):
+		return self.state.is_game_over()
 
 	def expand(self):
-		
-		return
+		# could either do it 'single' (this being just one iteration) or use a loop here to go through them all
+		action = self.untried_actions.pop()
+
+		next_state = self.state.move(action)
+		child_node = Node(next_state, self, action)
+		self.children[tuple(action)] = child_node
+
+		return child_node
 	
 	#simulation phase
 	def rollout(self):
-		return
+		crnt_rollout_state = self.state
+		depth = 0
+		max_rollout_depth = 10 		#PROBLEMS HERE, DOESNT ACTUALLY GET TO A TERMINATING STATE
+		#loops through all moves until at terminal node
+		while not crnt_rollout_state.is_game_over() and depth < max_rollout_depth: # this can either be is_game_over or is_terminal_node
+			possible_moves = crnt_rollout_state.get_legal_actions()
+			if not possible_moves:
+				break
+
+			action = self.rollout_policy(possible_moves)
+			crnt_rollout_state = crnt_rollout_state.move(action)
+			depth += 1
+
+		#after simulated gets the result
+		return crnt_rollout_state.game_result()
+	
+	#Randomly select a move for random simulation
+	def rollout_policy(self, possible_moves):
+		return possible_moves[np.random.randint(len(possible_moves))]
 	
 	#update the values accordingly
-	def backpropogate(self, result, root_player):
+	#NEED TO UNDERSTAND RESULT HERE
+	def backpropogate(self, result):
+		#assign reward here
+		
+		self.N += 1
+		self.T += result #MAYBE MAKE THIS DIFFERENT??
 
-		return
+		if self.parent:
+			self.parent.backpropogate(result)
+
+def mcts_search(state, simulations = 100):
+
+	root = Node(state)
+	for _ in range(simulations):
+		node = root
+
+		while not node.is_fully_expanded() and node.is_fully_expanded():
+			node = node.best_child()
+			if node is None:
+				break
+
+		#figure this out its not check_winner, its something else
+		if not node.is_terminal_node() and node.is_fully_expanded():
+			node = node.expand()
+
+		#simulation
+		result = node.rollout()
+
+		node.backpropogate(result)	
+
+	if not root.children:
+        # If no legal moves, return no-op
+		return np.array([0, 0])
+
+	best_action = root.best_child().parent_action
+
+	# # #change this to highest reward
+	# best_action = None
+	# best_reward = float('-inf')
+	# for action, child in root.children.items():
+	# 	if child.N > best_visits:
+	# 		best_visits = child.N
+	# 		best_action = action
+
+	# Debug information (optional)
+	# for action, child in root.children.items():
+	#     print(f"Action {action}: visits={child.N}, value={child.T/child.N if child.N else 0}")
+    
+	return np.array(best_action) 
 
 
-def mcts_search(state, player, simulations = 1000):
-	directions = np.array([[0,0], [-1, 0], [1, 0], [0, -1], [0, 1],
-                  	  		   [-1, -1], [-1, 1], [1, -1], [1, 1]]) 
-	return directions[np.random.choice(9)]
 # def dfs(grid, start, end):
 #     """A DFS example"""
 #     rows, cols = len(grid), len(grid[0])
@@ -146,8 +262,12 @@ class PlannerAgent:
                   	  		   [-1, -1], [-1, 1], [1, -1], [1, 1]]) 
 
 		#mtcs search returns the best action (one of the directions)
+		global GRID
+		GRID = world
 
+		initial_state = State(current, pursued, pursuer)
 
-		return mcts_search(State(grid, current, pursued, pursuer), 0)
+		best_action = mcts_search(initial_state)
+		return best_action
 
 
