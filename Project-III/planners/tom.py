@@ -1,4 +1,5 @@
 import math
+import time
 import numpy as np
 from typing import List, Tuple, Optional
 
@@ -19,19 +20,26 @@ GRID = None
 
 
 class State:
-	def __init__(self, current, pursued, pursuer):
+	def __init__(self, current, pursued, pursuer,  max_steps=100):
 		self.current = current
 		self.pursued = pursued
 		self.pursuer = pursuer
 		self.steps = 0
-		#self.max_steps = max_steps
+		self.max_steps = max_steps
 	
-
+	def copy(self):
+		return State(
+			np.copy(self.current),
+			np.copy(self.pursued),
+			np.copy(self.pursuer),
+			self.max_steps
+        )
 	# returns the next move of given state, action
 	def move(self, action):
-		new_current = [self.current[0] + action[0], self.current[1] + action[1]]
-		new_state = State(new_current,
-					 self.pursued, self.pursuer)
+
+		new_state = self.copy()
+		new_state.current = np.array([self.current[0] + action[0], self.current[1] + action[1]])
+		new_state.steps += 1
 		return new_state
 
 	def is_game_over(self):
@@ -42,8 +50,8 @@ class State:
 		if np.array_equal(self.current, self.pursuer):
 			return True
 		
-		# if self.steps >= self.max_steps:
-		# 	return True
+		if self.steps >= self.max_steps:
+			return True
 		
 		return False
 	
@@ -127,7 +135,7 @@ class Node:
 	def rollout(self):
 		crnt_rollout_state = self.state
 		depth = 0
-		max_rollout_depth = 100 		#PROBLEMS HERE, DOESNT ACTUALLY GET TO A TERMINATING STATE
+		max_rollout_depth = 10 		#PROBLEMS HERE, DOESNT ACTUALLY GET TO A TERMINATING STATE
 		#loops through all moves until at terminal node
 		while not crnt_rollout_state.is_game_over() and depth < max_rollout_depth: # this can either be is_game_over or is_terminal_node
 			possible_moves = crnt_rollout_state.get_legal_actions()
@@ -137,6 +145,7 @@ class Node:
 			
 			action = self.rollout_policy(possible_moves, crnt_rollout_state)
 			crnt_rollout_state = crnt_rollout_state.move(action)
+			#print(depth)
 			depth += 1
 
 		#after simulated gets the result
@@ -155,8 +164,14 @@ class Node:
 			# dst_from_pursued = round(np.sqrt((state.pursued[0] - new_pos[0]), 2)
 			#  + pow((state.pursued[1] - new_pos[1], 2)), 3)
 			# scores.append(dst_from_pursued)
-			dst_from_pursued = np.linalg.norm(state.pursued - new_pos)
-			scores.append(dst_from_pursued)
+			dst_from_pursuer = np.sum((state.pursuer - new_pos)**2)
+			dst_from_pursued = np.sum((state.pursued - new_pos)**2)
+
+			if dst_from_pursuer < 3:  # If pursuer is close, prioritize evasion
+				score = 0.3 * dst_from_pursued - 0.7 * dst_from_pursuer
+			else:  # Otherwise focus more on pursuing target
+				score = 0.7 * dst_from_pursued - 0.3 * dst_from_pursuer
+			scores.append(score)
 		return possible_moves[np.argmin(scores)]
 		#return possible_moves[np.random.randint(len(possible_moves))]
 	
@@ -171,89 +186,64 @@ class Node:
 		if self.parent:
 			self.parent.backpropogate(result)
 
-def mcts_search(state, simulations = 200):
 
-	root = Node(state)
-	for _ in range(simulations):
-		node = root
-
-		#selection
-		while not node.is_terminal_node() and node.is_fully_expanded():
-			node = node.best_child()
-			# if node is None:
-			# 	break
-
-		#expansion
-		if not node.is_terminal_node() and not node.is_fully_expanded():
-			node = node.expand()
-
-		#simulation
-		result = node.rollout()
-
-		#backpropogation
-		node.backpropogate(result)	
-
-	if not root.children:
-        # If no legal moves, return no-op
-		return np.array([0, 0])
-
-	best_action = root.best_child().parent_action
-
-	# # #change this to highest reward
-	# best_action = None
-	# best_visits = float('-inf')
-	# for action, child in root.children.items():
-	# 	if child.N > best_visits:
-	# 		best_visits = child.N
-	# 		best_action = action
-
-	# Debug information (optional)
-	# for action, child in root.children.items():
-	# 	print(f"Action {action}: visits={child.N}, value={child.T/child.N if child.N else 0}")
-    
-	return np.array(best_action) 
-
-
-# def dfs(grid, start, end):
-#     """A DFS example"""
-#     rows, cols = len(grid), len(grid[0])
-#     stack = [start]
-#     visited = set()
-#     parent = {start: None}
-
-#     # Consider all 8 possible moves (up, down, left, right, and diagonals)
-#     directions = [(-1, 0), (1, 0), (0, -1), (0, 1),  # Up, Down, Left, Right
-#                   (-1, -1), (-1, 1), (1, -1), (1, 1)]  # Diagonal moves
-
-#     while stack:
-#         x, y = stack.pop()
-#         if (x, y) == end:
-#             # Reconstruct the path
-#             path = []
-#             while (x, y) is not None:
-#                 path.append((x, y))
-#                 if parent[(x, y)] is None:
-#                     break  # Stop at the start node
-#                 x, y = parent[(x, y)]
-#             return path[::-1]  # Return reversed path
-
-#         if (x, y) in visited:
-#             continue
-#         visited.add((x, y))
-
-#         for dx, dy in directions:
-#             nx, ny = x + dx, y + dy
-#             if 0 <= nx < rows and 0 <= ny < cols and grid[nx][ny] == 0 and (nx, ny) not in visited:
-#                 stack.append((nx, ny))
-#                 parent[(nx, ny)] = (x, y)
-
-#     return None
 
 class PlannerAgent:
-	
+	TIME_LIMIT = 30
+
 	def __init__(self):
+		self.start_time = time.time()
 		pass
 	
+	def mcts_search(self, state, simulations = 10):
+
+		root = Node(state)
+
+		sim_count = 0
+
+		while time.time() - self.start_time < self.TIME_LIMIT and sim_count < simulations:
+			node = root
+			#print(f"simulation: {sim_count}")
+			#selection
+			while not node.is_terminal_node() and node.is_fully_expanded():
+				node = node.best_child()
+				# if node is None:
+				# 	break
+
+			#expansion
+			if not node.is_terminal_node() and not node.is_fully_expanded():
+				node = node.expand()
+
+			#simulation
+			result = node.rollout()
+			if result == 1.0:
+				break
+			#backpropogation
+			node.backpropogate(result)	
+
+			sim_count += 1
+
+		if not root.children:
+	        # If no legal moves, return no-op
+			return np.array([0, 0])
+
+		best_action = root.best_child().parent_action
+
+		# # #change this to highest reward
+		# best_action = None
+		# best_visits = float('-inf')
+		# for action, child in root.children.items():
+		# 	if child.N > best_visits:
+		# 		best_visits = child.N
+		# 		best_action = action
+
+		# Debug information (optional)
+		# for action, child in root.children.items():
+		# 	print(f"Action {action}: visits={child.N}, value={child.T/child.N if child.N else 0}")
+	
+		return np.array(best_action) 
+
+
 	def plan_action(self, world: np.ndarray, current: np.ndarray, pursued: np.ndarray, pursuer: np.ndarray) -> Optional[np.ndarray]:
 		"""
 		Computes a action to take from the current position caputure the pursued while evading from the pursuer
@@ -281,7 +271,7 @@ class PlannerAgent:
 
 		initial_state = State(current, pursued, pursuer)
 
-		best_action = mcts_search(initial_state)
+		best_action = self.mcts_search(initial_state)
 		return best_action
 
 

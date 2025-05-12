@@ -127,6 +127,6 @@ if __name__ == "__main__":
     # Test all grid tasks with each task tested for 5 times
     for id in range(100):
         for running_id in range(5):
-            T = Task(id, running_id)
+            T = Task(id, running_id, prob = [0.0, 1.0, 0.0])
             result = T.run()
             print (id, running_id, result)
